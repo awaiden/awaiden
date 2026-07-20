@@ -5,7 +5,7 @@ echo "🚀 Starting Fedora Setup Script..."
 # 1. System Update & Essential Packages
 echo "📦 Updating system and installing base packages..."
 sudo dnf update -y
-sudo dnf install -y zsh git fastfetch gnome-tweaks gnome-shell-extension-manager auto-cpufreq bleachbit xorg-x11-drv-nvidia-cuda
+sudo dnf install -y zsh git fastfetch gnome-tweaks gnome-shell-extension-manager xorg-x11-drv-nvidia-cuda curl wget
 
 # 2. Add VS Code Repository & Install
 echo "💻 Setting up Visual Studio Code repository..."
@@ -13,9 +13,10 @@ sudo rpm --import https://packages.microsoft.com/keys/microsoft.asc
 echo -e "[code]\nname=Visual Studio Code\nbaseurl=https://packages.microsoft.com/yumrepos/vscode\nenabled=1\ngpgcheck=1\ngpgkey=https://packages.microsoft.com/keys/microsoft.asc" | sudo tee /etc/yum.repos.d/vscode.repo > /dev/null
 sudo dnf install -y code
 
-# 3. Flathub Repository
-echo "🛍️ Adding Flathub repository..."
+# 3. Flathub Repository & Chrome Installation
+echo "🛍️ Adding Flathub repository and installing Google Chrome..."
 flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+flatpak install flathub com.google.Chrome -y
 
 # 4. Git Configuration
 echo "🔧 Configuring Git..."
@@ -31,33 +32,76 @@ if [ ! -f ~/.ssh/id_ed25519 ]; then
     ssh-add ~/.ssh/id_ed25519
 fi
 
-# 6. Auto-Clean Systemd Services
-echo "🧹 Configuring automated system cleanup service..."
-sudo bash -c 'cat <<EOF > /etc/systemd/system/auto-clean.service
-[Unit]
-Description=Advanced Weekly System and Cache Cleanup
+# 6. Development Tools (Zed, Bun, NVM, Node, pnpm)
+echo "⚡ Installing Zed Editor..."
+curl -f https://zed.dev/install.sh | sh
 
-[Service]
-Type=oneshot
-ExecStart=/usr/bin/dnf clean all
-ExecStart=/usr/bin/journalctl --vacuum-size=100M
-ExecStart=/usr/bin/bleachbit --clean system.cache system.tmp deepscan.tmp
-EOF'
+echo "🍞 Installing Bun..."
+curl -fsSL https://bun.sh/install | bash
 
-sudo bash -c 'cat <<EOF > /etc/systemd/system/auto-clean.timer
-[Unit]
-Description=Weekly Cleanup Timer
+echo "🟢 Installing NVM & Node.js..."
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.6/install.sh | bash
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+nvm install 24
 
-[Timer]
-OnCalendar=weekly
-Persistent=true
+echo "📦 Enabling pnpm via Corepack..."
+corepack enable pnpm
 
-[Install]
-WantedBy=timers.target
-EOF'
+# 7. Zsh, Oh My Zsh, Powerlevel10k & Plugins Setup
+echo "🐚 Setting up Zsh, Oh My Zsh, Powerlevel10k and Plugins..."
+if [ ! -d "$HOME/.oh-my-zsh" ]; then
+    RUNZSH=no CHSH=no sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+fi
 
-sudo systemctl daemon-reload
-sudo systemctl enable --now auto-clean.timer
-sudo auto-cpufreq --install
+ZSH_CUSTOM="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
 
-echo "✅ SETUP COMPLETE! A system reboot is recommended."
+# Install Powerlevel10k
+if [ ! -d "$ZSH_CUSTOM/themes/powerlevel10k" ]; then
+    git clone --depth=1 https://github.com/romkatv/powerlevel10k.git "$ZSH_CUSTOM/themes/powerlevel10k"
+fi
+
+# Install Plugins
+if [ ! -d "$ZSH_CUSTOM/plugins/zsh-autosuggestions" ]; then
+    git clone https://github.com/zsh-users/zsh-autosuggestions "$ZSH_CUSTOM/plugins/zsh-autosuggestions"
+fi
+
+if [ ! -d "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting" ]; then
+    git clone https://github.com/zsh-users/zsh-syntax-highlighting.git "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting"
+fi
+
+# Write .zshrc configuration
+cat << 'EOF' > ~/.zshrc
+# Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
+if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
+fi
+
+export ZSH="$HOME/.oh-my-zsh"
+ZSH_THEME="powerlevel10k/powerlevel10k"
+
+plugins=(
+    git
+    zsh-autosuggestions
+    zsh-syntax-highlighting
+)
+
+source $ZSH/oh-my-zsh.sh
+
+# NVM Environment
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+
+# Bun Environment
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+
+# To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
+[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+EOF
+
+# Set Zsh as default shell
+sudo chsh -s $(which zsh) $USER
+
+echo "✅ SETUP COMPLETE! Please log out or restart your system for shell changes to take effect."
